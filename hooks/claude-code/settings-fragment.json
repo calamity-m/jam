@@ -2,13 +2,23 @@
   "hooks": {
     "SessionStart": [
       {
-        "hooks": [{ "type": "command", "command": "jam notify --agent claude-code --event start" }]
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jam notify --agent claude-code --event start",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "jam notify --agent claude-code --event working" }
+          {
+            "type": "command",
+            "command": "jam notify --agent claude-code --event working",
+            "timeout": 10
+          }
         ]
       }
     ],
@@ -17,7 +27,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jam notify --agent claude-code --event working --title \"Compacting\""
+            "command": "jam notify --agent claude-code --event working --title \"Compacting\"",
+            "timeout": 10
           }
         ]
       }
@@ -27,23 +38,89 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jam notify --agent claude-code --event done --title \"Compacted\""
+            "command": "jam notify --agent claude-code --event working --title \"Compacted\"",
+            "timeout": 10
           }
         ]
       }
     ],
     "Notification": [
       {
+        "matcher": "permission_prompt|idle_prompt|elicitation_dialog|agent_needs_input",
         "hooks": [
-          { "type": "command", "command": "jam notify --agent claude-code --event waiting_input" }
+          {
+            "type": "command",
+            "command": "jam notify --agent claude-code --event waiting_input",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jam notify --agent claude-code --event working",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jam notify --agent claude-code --event working",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jam notify --agent claude-code --event working",
+            "timeout": 10
+          }
         ]
       }
     ],
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "jam notify --agent claude-code --event done" }] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jam notify --agent claude-code --event done",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jam notify --agent claude-code --event error",
+            "timeout": 10
+          }
+        ]
+      }
     ],
     "SessionEnd": [
-      { "hooks": [{ "type": "command", "command": "jam notify --agent claude-code --event end" }] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jam notify --agent claude-code --event end",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }
