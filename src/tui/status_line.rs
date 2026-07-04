@@ -1,9 +1,9 @@
 //! Renders the bottom line: key hints, or a transient message.
 
+use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line;
-use ratatui::Frame;
 
 pub fn render(frame: &mut Frame, area: Rect, message: Option<&str>) {
     let line = match message {

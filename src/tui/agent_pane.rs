@@ -1,11 +1,11 @@
 //! Renders the flat agent list: one row per session, selection highlighted.
 
 use crate::proto::{Agent, Session, SessionState};
+use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState};
-use ratatui::Frame;
 
 pub fn render(frame: &mut Frame, area: Rect, sessions: &[Session], selected: usize) {
     let items: Vec<ListItem> = sessions.iter().map(row).collect();

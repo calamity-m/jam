@@ -15,7 +15,7 @@
 //! `tmux switch-client`, so it cannot re-attach the viewer's client to a
 //! *different* zellij session.
 
-use super::{run, FocusError};
+use super::{FocusError, run};
 
 pub fn focus(mux_session: Option<&str>, pane_ref: &str) -> Result<(), FocusError> {
     let pane_id = qualify_pane_id(pane_ref);

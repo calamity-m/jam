@@ -10,7 +10,10 @@ pub fn run(args: &SetupArgs) -> Result<(), String> {
     let fragment = embedded_fragment()?;
     let target = target_path(args.local)?;
     if args.dry {
-        println!("# Claude Code — jam setup claude-code would merge this into {}:", target.display());
+        println!(
+            "# Claude Code — jam setup claude-code would merge this into {}:",
+            target.display()
+        );
         println!("{fragment}");
         return Ok(());
     }
@@ -39,8 +42,12 @@ fn target_path(local: bool) -> Result<PathBuf, String> {
 
 fn install(target: &std::path::Path, fragment: &str) -> Result<(), String> {
     let existing: Value = match std::fs::read_to_string(target) {
-        Ok(text) => serde_json::from_str(&text)
-            .map_err(|e| format!("{} is not valid JSON ({e}); not touching it", target.display()))?,
+        Ok(text) => serde_json::from_str(&text).map_err(|e| {
+            format!(
+                "{} is not valid JSON ({e}); not touching it",
+                target.display()
+            )
+        })?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Value::Object(Map::new()),
         Err(e) => return Err(format!("cannot read {}: {e}", target.display())),
     };
@@ -145,7 +152,13 @@ mod tests {
         let (merged, changed) = merge_hooks(json!({}), &fragment()).unwrap();
         assert!(changed);
         let hooks = merged["hooks"].as_object().unwrap();
-        for event in ["SessionStart", "UserPromptSubmit", "Notification", "Stop", "SessionEnd"] {
+        for event in [
+            "SessionStart",
+            "UserPromptSubmit",
+            "Notification",
+            "Stop",
+            "SessionEnd",
+        ] {
             assert!(hooks[event].is_array(), "missing {event}");
         }
     }

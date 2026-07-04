@@ -5,12 +5,15 @@
 //! its window, make the window active in its session, then point the current
 //! client at that session.
 
-use super::{run, FocusError};
+use super::{FocusError, run};
 
 pub fn focus(pane_ref: &str) -> Result<(), FocusError> {
     // Verify the pane still exists so a moved/closed pane surfaces as
     // PaneGone rather than a confusing tmux error.
-    let (ok, _) = run("tmux", &["display-message", "-p", "-t", pane_ref, "#{pane_id}"])?;
+    let (ok, _) = run(
+        "tmux",
+        &["display-message", "-p", "-t", pane_ref, "#{pane_id}"],
+    )?;
     if !ok {
         return Err(FocusError::PaneGone);
     }

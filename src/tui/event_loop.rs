@@ -92,9 +92,12 @@ fn event_loop(
 }
 
 fn draw(frame: &mut Frame, app: &App) {
-    let [header, list, status] =
-        Layout::vertical([Constraint::Length(1), Constraint::Min(1), Constraint::Length(1)])
-            .areas(frame.area());
+    let [header, list, status] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(1),
+    ])
+    .areas(frame.area());
     super::header_line::render(frame, header, app.sessions.len());
     super::agent_pane::render(frame, list, &app.sessions, app.selected);
     super::status_line::render(frame, status, app.message.as_deref());
@@ -209,7 +212,14 @@ mod tests {
         let order: Vec<&str> = app.sessions.iter().map(|s| s.session_id.as_str()).collect();
         assert_eq!(
             order,
-            ["waiting-old", "waiting-new", "error", "working", "done", "stale"]
+            [
+                "waiting-old",
+                "waiting-new",
+                "error",
+                "working",
+                "done",
+                "stale"
+            ]
         );
     }
 

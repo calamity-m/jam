@@ -31,10 +31,11 @@ fn send(args: NotifyArgs) -> Result<(), String> {
     let Some(session_id) = args.session.or(stdin.session_id) else {
         return Err("no session id: pass --session or pipe hook JSON on stdin".into());
     };
-    let cwd = args
-        .cwd
-        .or(stdin.cwd)
-        .or_else(|| std::env::current_dir().ok().map(|p| p.display().to_string()));
+    let cwd = args.cwd.or(stdin.cwd).or_else(|| {
+        std::env::current_dir()
+            .ok()
+            .map(|p| p.display().to_string())
+    });
     let (mux, mux_session, env_pane) = detect_mux();
     let event = Event {
         session_id,

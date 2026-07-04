@@ -27,7 +27,10 @@ pub fn run(args: &SetupArgs) -> Result<(), String> {
     let target_dir = target_dir(args.local)?;
     if args.dry {
         for (name, contents) in assets::PI {
-            println!("# Pi — jam setup pi would write {}:", target_dir.join(name).display());
+            println!(
+                "# Pi — jam setup pi would write {}:",
+                target_dir.join(name).display()
+            );
             println!("{contents}");
         }
         return Ok(());

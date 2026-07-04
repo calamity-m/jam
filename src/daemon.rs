@@ -78,14 +78,16 @@ pub fn run() -> io::Result<()> {
     // Periodic sweep so stale transitions reach subscribers without any
     // event arriving to trigger a broadcast.
     let sweeper = Arc::clone(&shared);
-    std::thread::spawn(move || loop {
-        std::thread::sleep(STALE_SWEEP_INTERVAL);
-        let mut shared = sweeper.lock().unwrap();
-        if shared
-            .registry
-            .mark_stale(proto::now_epoch(), STALE_TIMEOUT_SECS)
-        {
-            shared.broadcast();
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(STALE_SWEEP_INTERVAL);
+            let mut shared = sweeper.lock().unwrap();
+            if shared
+                .registry
+                .mark_stale(proto::now_epoch(), STALE_TIMEOUT_SECS)
+            {
+                shared.broadcast();
+            }
         }
     });
 
@@ -111,7 +113,10 @@ fn bind(path: &std::path::Path) -> io::Result<UnixListener> {
             if UnixStream::connect(path).is_ok() {
                 return Err(io::Error::new(
                     io::ErrorKind::AddrInUse,
-                    format!("another jam daemon is already running on {}", path.display()),
+                    format!(
+                        "another jam daemon is already running on {}",
+                        path.display()
+                    ),
                 ));
             }
             std::fs::remove_file(path)?;
