@@ -34,25 +34,37 @@ its hooks can express; never invent new event names without extending
 `EventKind` in `src/proto.rs` first.
 
 Current claude-code mapping (in `hooks/claude-code/settings-fragment.json`):
-SessionStart→start, UserPromptSubmit→working, PreCompact→working (busy
-compacting, not waiting; SessionStart re-fires when compaction finishes),
-Notification→waiting_input, Stop→done, SessionEnd→end. `jam notify` reads
-`session_id` and `cwd` from
-the hook's stdin JSON, so commands need no shell plumbing.
+SessionStart→start, UserPromptSubmit→working, PreCompact/PostCompact→working
+(compaction is busy time, not done/waiting; titled "Compacting"/"Compacted"),
+Notification→waiting_input (matcher-scoped to
+`permission_prompt|idle_prompt|elicitation_dialog|agent_needs_input` so
+informational notifications like `auth_success` don't flip the state),
+PostToolUse/PostToolUseFailure/PermissionDenied→working (these clear
+`waiting_input` once a permission prompt is resolved, whatever the outcome),
+Stop→done, StopFailure→error, SessionEnd→end. Every hook carries
+`"timeout": 10` so a wedged daemon can't stall Claude's loop. `jam notify`
+reads `session_id` and `cwd` from the hook's stdin JSON, so commands need no
+shell plumbing.
 
 ## Install semantics (do not weaken these)
 
-- **Non-destructive**: JSON targets are deep-merged on the `hooks` key only;
-  unrelated keys and existing hook entries are preserved; malformed target
-  files are refused, never clobbered. Plain-file targets are never
-  overwritten when existing content differs (skip loudly instead).
+- **Non-destructive for anything jam doesn't own**: JSON targets are
+  deep-merged on the `hooks` key only; unrelated keys and non-jam hook
+  entries are preserved; malformed target files are refused, never
+  clobbered. Plain-file targets are never overwritten when existing content
+  differs (skip loudly instead).
+- **Jam-owned entries upgrade in place**: an entry whose hook commands are
+  all `jam notify ...` invocations is jam-owned; stale ones (no longer in
+  the embedded fragment, including under event keys the fragment dropped)
+  are removed on install. Mixed jam/non-jam entries count as user-owned and
+  are never touched.
 - **Idempotent**: re-running `jam setup` must be a no-op.
 - **Targets**: default = user root (`~/.claude/settings.json`,
   `~/.pi/agent/extensions/`); `--local` = current directory
   (`./.claude/settings.local.json`, `./.pi/extensions/` — note pi's local
   path has no `agent/` segment).
-- `--ask` previews payload + target and requires confirmation; `--dry`
-  prints without writing.
+- `--ask` previews the removed/added entries + target and requires
+  confirmation; `--dry` prints the same delta without writing.
 
 ## Changing or adding a hook payload
 
