@@ -1,0 +1,22 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "jam notify --agent claude-code --event start" }] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "jam notify --agent claude-code --event working" }] }
+    ],
+    "PreCompact": [
+      { "hooks": [{ "type": "command", "command": "jam notify --agent claude-code --event working --title \"Compacting\"" }] }
+    ],
+    "Notification": [
+      { "hooks": [{ "type": "command", "command": "jam notify --agent claude-code --event waiting_input" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "jam notify --agent claude-code --event done" }] }
+    ],
+    "SessionEnd": [
+      { "hooks": [{ "type": "command", "command": "jam notify --agent claude-code --event end" }] }
+    ]
+  }
+}
