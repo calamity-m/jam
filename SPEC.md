@@ -40,7 +40,7 @@ None are multiplexer-agnostic; all are heavier than the problem.
 
 Suggested project structure:
 
-````text
+```text
 src
 ├── cmd
 │   ├── daemon.rs
@@ -64,7 +64,8 @@ src
 │   ├── event_loop.rs
 │   ├── header_line.rs
 │   └── status_line.rs
-└── tui.rs```
+└── tui.rs
+```
 
 Top-level `*.rs` files own module wiring and public entry points. Matching
 subdirectories hold focused implementation files for that area.
@@ -77,7 +78,7 @@ Four pieces, one binary (subcommands):
 
 - Listens on a Unix socket (e.g. `$XDG_RUNTIME_DIR/jam.sock`).
 - Holds an in-memory registry: `session_id → {agent, state, title, cwd,
-mux, pane_ref, last_event, last_event_at}`.
+mux, mux_session, pane_ref, last_event, last_event_at}`.
 - Auto-started on demand by the TUI or notify command if not running.
 - Marks sessions stale if no event arrives within a timeout, and drops
   sessions on an explicit end event.
@@ -87,14 +88,14 @@ mux, pane_ref, last_event, last_event_at}`.
 The entire integration surface. Agent hooks call it with an event; it writes
 JSON to the socket and exits. Fast, silent, never fails the hook.
 
-````
+```
 
 jam notify --session <id> --agent claude-code --event stop
-jam notify --dry
+jam setup <agent> --dry
 
 ```
 
-With `--dry`, `jam notify` does not contact the daemon or write config. It
+With `--dry`, `jam setup` does not contact the daemon or write config. It
 prints the generated hook snippets/commands for copy-paste setup instead.
 
 Event payload (normalized across agents):
@@ -106,8 +107,9 @@ Event payload (normalized across agents):
 | `event`      | `start`, `working`, `waiting_input`, `done`, `error`, `end`. |
 | `title`      | Optional human label (e.g. current task or prompt snippet).  |
 | `cwd`        | Working directory of the agent.                              |
-| `mux`        | `tmux` / `zellij`, detected from environment.                |
-| `pane_ref`   | `$TMUX_PANE` / zellij pane id, captured by the hook.         |
+| `mux`          | `tmux` / `zellij`, detected from environment.                |
+| `mux_session`  | Multiplexer session holding the pane. Needed for zellij (pane ids are per-session); unused for tmux (pane ids are server-global). |
+| `pane_ref`     | `$TMUX_PANE` / `$ZELLIJ_PANE_ID`, captured by the hook.      |
 
 Agent-specific event names are mapped to the five normalized states by thin
 adapter logic in `jam notify` (or by the hook configuration itself). Shipping
@@ -145,14 +147,25 @@ events.
 ```
 
 jam setup pi
-jam setup claude-code
+jam setup claude-code [--local] [--ask] [--dry]
 
 ```
 
 - Supports `pi` and `claude-code` in the MVP.
-- Defaults to a safe, explicit mode: show the files/commands it will change,
-  then require confirmation before writing.
-- Copy-paste mode is `jam notify --dry`: it prints the generated hooks instead
+- Hook payloads are plain files in the repo's `hooks/<agent>/` directories,
+  embedded into the binary at build time (build.rs copies them into
+  `$OUT_DIR/assets`), so the installer is self-contained.
+- Installs are **non-destructive and idempotent**: JSON targets (claude-code
+  settings) are deep-merged on the `hooks` key only — existing entries and
+  unrelated keys are preserved, re-runs are no-ops, and a malformed target
+  file is refused rather than clobbered. Plain-file targets (pi extensions)
+  are never overwritten when existing content differs.
+- Installs immediately by default; `--ask` prints the payload and target
+  path first and requires confirmation.
+- `--local` installs into the current directory's config
+  (./.claude/settings.local.json) instead of the user root
+  (~/.claude/settings.json).
+- Copy-paste mode is `jam setup <agent> --dry`: it prints the generated hooks instead
   of letting jam modify config.
 - Does not manage agents, repos, branches, worktrees, or multiplexer layout;
   it only installs notification hooks.
@@ -170,7 +183,7 @@ tmux sessions. The TUI stays running in its pane.
 
 **Hook setup.** Run `jam setup pi` or `jam setup claude-code`. Jam shows the
 hook files/commands it will change, then installs hooks that invoke
-`jam notify`. Users can instead run `jam notify --dry` and copy-paste the
+`jam notify`. Users can instead run `jam setup <agent> --dry` and copy-paste the
 generated snippets manually.
 
 ## Multiplexer backends
@@ -181,9 +194,10 @@ operations:
 - `focus(pane_ref)` — bring the given pane into view and focus it.
 
 Backends: `tmux` (via `tmux switch-client` / `select-window` /
-`select-pane` / `split-window`), `zellij` (via `zellij action` and/or a small
-helper plugin). Everything else — daemon, events, TUI — is
-multiplexer-agnostic by construction.
+`select-pane` / `split-window`), `zellij` (via
+`zellij --session <name> action focus-pane-id`; no helper plugin needed as
+of zellij 0.44.3 — see open questions). Everything else — daemon, events,
+TUI — is multiplexer-agnostic by construction.
 
 ## Design principles
 
@@ -198,12 +212,19 @@ multiplexer-agnostic by construction.
 
 ## Open questions / risks
 
-1. **Zellij focus.** `zellij action` has no direct external "focus pane by
-   id" equivalent to `tmux select-pane -t %5`. The backend may need tab-level
-   navigation or a small WASM plugin. Spike this first; it is the only real
-   unknown. If a WASM plugin is required, the design must support no plugin
-   AND plugin. If there is no plugin installed, change tab-level or whatever
-   navigation is possible, otherwise utilise the WASM plugin.
+1. **Zellij focus — RESOLVED (spiked against zellij 0.44.3).** Plain zellij
+   has `zellij action focus-pane-id <id>` and it works externally, including
+   switching to the tab that holds the pane:
+   `zellij --session <name> action focus-pane-id terminal_<n>`. No WASM
+   plugin is required. Findings: the command exits non-zero for both the
+   harmless "already focused" case and a missing pane, so the backend
+   distinguishes them by stderr; pane ids are only unique per session, so
+   jam records `$ZELLIJ_SESSION_NAME` alongside the pane id (the event's
+   `mux_session` field). Remaining
+   constraint: zellij has no `tmux switch-client` equivalent, so jam cannot
+   re-attach the viewer's client to a different zellij session — cross-tab
+   jumps are automatic, cross-session jumps land correctly once the user
+   attaches to that session.
 2. **Session→pane mapping drift.** Panes can be moved or closed after the
    hook captured `pane_ref`. MVP answer: verify the pane exists at
    focus-time and mark the session stale if not.
@@ -215,4 +236,3 @@ multiplexer-agnostic by construction.
 Done when: two Claude Code sessions in different tmux sessions plus one in
 zellij all appear in `jam`, states change live as they work/finish/block,
 and Enter lands you in the right pane every time.
-```
