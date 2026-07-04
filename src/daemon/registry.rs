@@ -15,7 +15,8 @@ impl Registry {
             return self.sessions.remove(&event.session_id).is_some();
         }
         let state = match event.event {
-            EventKind::Start | EventKind::Working => SessionState::Working,
+            EventKind::Start => SessionState::Start,
+            EventKind::Working => SessionState::Working,
             EventKind::WaitingInput => SessionState::WaitingInput,
             EventKind::Done => SessionState::Done,
             EventKind::Error => SessionState::Error,
@@ -117,12 +118,12 @@ mod tests {
     }
 
     #[test]
-    fn start_creates_working_session() {
+    fn start_creates_start_session() {
         let mut reg = Registry::default();
         assert!(reg.apply(&event("s1", EventKind::Start), 100));
         let snap = reg.snapshot();
         assert_eq!(snap.len(), 1);
-        assert_eq!(snap[0].state, SessionState::Working);
+        assert_eq!(snap[0].state, SessionState::Start);
         assert_eq!(snap[0].last_event, EventKind::Start);
         assert_eq!(snap[0].last_event_at, 100);
     }

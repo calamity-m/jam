@@ -68,12 +68,13 @@ pub struct Event {
 }
 
 /// Session status as tracked by the daemon, derived from the last event:
-/// `start`/`working` → `working`, the rest map one-to-one, and `end`
-/// removes the session. `stale` is the exception — the daemon sets it
-/// itself on event timeout or when a focus attempt finds the pane gone.
+/// most map one-to-one, and `end` removes the session. `stale` is the
+/// exception — the daemon sets it itself on event timeout or when a focus
+/// attempt finds the pane gone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionState {
+    Start,
     Working,
     WaitingInput,
     Done,

@@ -42,6 +42,7 @@ fn state_glyph(state: SessionState) -> (&'static str, Color) {
     match state {
         SessionState::WaitingInput => ("●", Color::Yellow),
         SessionState::Error => ("●", Color::Red),
+        SessionState::Start => ("○", Color::Cyan),
         SessionState::Working => ("○", Color::Blue),
         SessionState::Done => ("●", Color::Green),
         SessionState::Stale => ("·", Color::DarkGray),
@@ -52,6 +53,7 @@ fn state_label(state: SessionState) -> &'static str {
     match state {
         SessionState::WaitingInput => "waiting",
         SessionState::Error => "error",
+        SessionState::Start => "start",
         SessionState::Working => "working",
         SessionState::Done => "done",
         SessionState::Stale => "stale",

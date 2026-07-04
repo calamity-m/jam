@@ -164,7 +164,7 @@ impl App {
 fn priority(state: SessionState) -> u8 {
     match state {
         SessionState::WaitingInput | SessionState::Error => 0,
-        SessionState::Working => 1,
+        SessionState::Start | SessionState::Working => 1,
         SessionState::Done => 2,
         SessionState::Stale => 3,
     }
