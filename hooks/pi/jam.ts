@@ -73,6 +73,8 @@ function sessionId(ctx: ExtensionContext): string {
   return fallbackSessionId;
 }
 
+// Mirrors summarize_prompt in src/notify.rs, the authoritative behavior:
+// collapse whitespace, 80-char cap (77 + "..."), undefined for blank input.
 function summarizePrompt(prompt: string): string | undefined {
   const singleLine = prompt.replace(/\s+/g, " ").trim();
   if (!singleLine) return undefined;

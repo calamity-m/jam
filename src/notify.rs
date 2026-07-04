@@ -17,6 +17,9 @@ use std::io::{IsTerminal, Read, Write};
 struct HookStdin {
     session_id: Option<String>,
     cwd: Option<String>,
+    /// Present in Claude Code and Codex payloads; pi and opencode do not
+    /// pipe hook JSON, so it is never available there.
+    prompt: Option<String>,
 }
 
 pub fn run(args: NotifyArgs) {
@@ -36,12 +39,17 @@ fn send(args: NotifyArgs) -> Result<(), String> {
             .ok()
             .map(|p| p.display().to_string())
     });
+    let title = args.title.or_else(|| {
+        args.title_from_prompt
+            .then(|| stdin.prompt.as_deref().and_then(summarize_prompt))
+            .flatten()
+    });
     let (mux, mux_session, env_pane) = detect_mux();
     let event = Event {
         session_id,
         agent: args.agent,
         event: args.event,
-        title: args.title,
+        title,
         cwd,
         mux,
         mux_session,
@@ -67,6 +75,22 @@ fn read_hook_stdin() -> HookStdin {
     serde_json::from_str(&buf).unwrap_or_default()
 }
 
+/// Collapse whitespace and truncate to 80 chars (77 + "..."). None for
+/// empty/whitespace-only input so a blank prompt never blanks an
+/// existing title.
+fn summarize_prompt(prompt: &str) -> Option<String> {
+    let collapsed = prompt.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        return None;
+    }
+    if collapsed.chars().count() <= 80 {
+        return Some(collapsed);
+    }
+    let mut short: String = collapsed.chars().take(77).collect();
+    short.push_str("...");
+    Some(short)
+}
+
 /// Detect the surrounding multiplexer, its session, and the pane from the
 /// hook's environment. If sessions are nested, tmux wins arbitrarily;
 /// --pane-ref can override.
@@ -83,4 +107,42 @@ fn detect_mux() -> (Option<Mux>, Option<String>, Option<String>) {
         );
     }
     (None, None, None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn summarize_prompt_passes_short_prompts_through() {
+        assert_eq!(summarize_prompt("fix the bug"), Some("fix the bug".into()));
+    }
+
+    #[test]
+    fn summarize_prompt_collapses_whitespace_and_newlines() {
+        assert_eq!(summarize_prompt("a\n\n  b\tc"), Some("a b c".into()));
+    }
+
+    #[test]
+    fn summarize_prompt_returns_none_for_empty_and_whitespace() {
+        assert_eq!(summarize_prompt(""), None);
+        assert_eq!(summarize_prompt("  \n\t "), None);
+    }
+
+    #[test]
+    fn summarize_prompt_truncates_long_prompts_to_80_chars() {
+        let long = "x".repeat(100);
+        let short = summarize_prompt(&long).unwrap();
+        assert_eq!(short.chars().count(), 80);
+        assert!(short.ends_with("..."));
+        assert!(short.starts_with(&"x".repeat(77)));
+    }
+
+    #[test]
+    fn summarize_prompt_truncates_on_char_boundary() {
+        let long = "日".repeat(100);
+        let short = summarize_prompt(&long).unwrap();
+        assert_eq!(short.chars().count(), 80);
+        assert_eq!(short, format!("{}...", "日".repeat(77)));
+    }
 }

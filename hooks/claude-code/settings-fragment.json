@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jam notify --agent claude-code --event working",
+            "command": "jam notify --agent claude-code --event working --title-from-prompt",
             "timeout": 10
           }
         ]

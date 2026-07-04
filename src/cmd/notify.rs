@@ -22,6 +22,11 @@ pub struct NotifyArgs {
     #[arg(long)]
     pub title: Option<String>,
 
+    /// Derive the title from the hook stdin JSON's `prompt` field
+    /// (truncated snippet). An explicit --title wins.
+    #[arg(long)]
+    pub title_from_prompt: bool,
+
     /// Agent working directory. Defaults to stdin JSON, then the current dir.
     #[arg(long)]
     pub cwd: Option<String>,
