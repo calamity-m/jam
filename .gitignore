@@ -1,1 +1,10 @@
 /target
+.vscode
+.idea
+.opencode
+.pi
+
+.claude/*
+# keep skills
+!.claude/skills/
+!.claude/skills/**
