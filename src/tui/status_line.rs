@@ -1,17 +1,28 @@
-//! Renders the bottom line: key hints, or a transient message.
+//! Builds the frame's bottom border title: key hints, or a transient message.
 
-use ratatui::Frame;
-use ratatui::layout::Rect;
+use super::theme;
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 
-pub fn render(frame: &mut Frame, area: Rect, message: Option<&str>) {
-    let line = match message {
-        Some(message) => Line::styled(message.to_string(), Style::default().fg(Color::Yellow)),
-        None => Line::styled(
-            "↵ go   x dismiss   q quit",
-            Style::default().add_modifier(Modifier::DIM),
-        ),
+pub fn title(message: Option<&str>) -> Line<'static> {
+    let Some(message) = message else {
+        return hints();
     };
-    frame.render_widget(line, area);
+    Line::styled(format!(" {message} "), Style::new().fg(Color::Yellow))
+}
+
+fn hints() -> Line<'static> {
+    let key = Style::new().fg(theme::ACCENT).add_modifier(Modifier::BOLD);
+    let sep = Span::styled(" · ", theme::MUTED);
+    Line::from(vec![
+        Span::raw(" "),
+        Span::styled("↵", key),
+        Span::raw(" go"),
+        sep.clone(),
+        Span::styled("x", key),
+        Span::raw(" dismiss"),
+        sep,
+        Span::styled("q", key),
+        Span::raw(" quit "),
+    ])
 }

@@ -1,22 +1,33 @@
 //! Renders the flat agent list: one row per session, selection highlighted.
 
+use super::theme;
 use crate::proto::{Agent, Session, SessionState};
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState};
 
 pub fn render(frame: &mut Frame, area: Rect, sessions: &[Session], selected: usize) {
-    let items: Vec<ListItem> = sessions.iter().map(row).collect();
-    let list = List::new(items).highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+    let items: Vec<ListItem> = sessions
+        .iter()
+        .enumerate()
+        .map(|(i, session)| row(session, i == selected))
+        .collect();
+    let list = List::new(items)
+        .highlight_style(Style::new().bg(theme::HIGHLIGHT_BG))
+        .highlight_symbol(Span::styled("▌", Style::new().fg(theme::ACCENT)));
     let mut state = ListState::default();
     state.select((!sessions.is_empty()).then_some(selected));
     frame.render_stateful_widget(list, area, &mut state);
 }
 
-fn row(session: &Session) -> ListItem<'static> {
-    let (symbol, color) = state_glyph(session.state);
+fn row(session: &Session, selected: bool) -> ListItem<'static> {
+    let (symbol, mut color) = state_glyph(session.state);
+    // DarkGray fg (stale) vanishes against the DarkGray highlight bg.
+    if selected && color == theme::HIGHLIGHT_BG {
+        color = Color::Gray;
+    }
     let line = Line::from(vec![
         Span::styled(format!("{symbol} "), Style::default().fg(color)),
         Span::styled(
@@ -24,13 +35,13 @@ fn row(session: &Session) -> ListItem<'static> {
             Style::default().fg(color),
         ),
         Span::raw(format!(" {:<9}", agent_label(session.agent))),
-        Span::raw(format!(
-            " {:<28}",
-            session.cwd.as_deref().map(shorten_home).unwrap_or_default()
-        )),
+        match session.cwd.as_deref().map(shorten_home) {
+            Some(cwd) => Span::raw(format!(" {cwd:<28}")),
+            None => Span::styled(format!(" {:<28}", "—"), theme::MUTED),
+        },
         Span::styled(
-            format!(" {}", session.title.as_deref().unwrap_or_default()),
-            Style::default().add_modifier(Modifier::DIM),
+            format!(" {}", session.title.as_deref().unwrap_or("—")),
+            theme::MUTED,
         ),
     ]);
     ListItem::new(line)

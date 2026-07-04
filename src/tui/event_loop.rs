@@ -1,10 +1,12 @@
 //! The TUI's central loop: subscribe to the daemon, redraw on updates,
 //! handle keys. Rendering details live in the sibling modules.
 
+use super::theme;
 use crate::mux::{self, FocusError};
 use crate::proto::{Request, Response, Session, SessionState};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
-use ratatui::layout::{Constraint, Layout};
+use ratatui::style::Style;
+use ratatui::widgets::{Block, BorderType};
 use ratatui::{DefaultTerminal, Frame};
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -92,15 +94,14 @@ fn event_loop(
 }
 
 fn draw(frame: &mut Frame, app: &App) {
-    let [header, list, status] = Layout::vertical([
-        Constraint::Length(1),
-        Constraint::Min(1),
-        Constraint::Length(1),
-    ])
-    .areas(frame.area());
-    super::header_line::render(frame, header, app.sessions.len());
-    super::agent_pane::render(frame, list, &app.sessions, app.selected);
-    super::status_line::render(frame, status, app.message.as_deref());
+    let block = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .border_style(Style::new().fg(theme::BORDER))
+        .title_top(super::header_line::title(app.sessions.len()))
+        .title_bottom(super::status_line::title(app.message.as_deref()));
+    let inner = block.inner(frame.area());
+    frame.render_widget(block, frame.area());
+    super::agent_pane::render(frame, inner, &app.sessions, app.selected);
 }
 
 /// Jump to the selected agent's pane via its multiplexer backend. A missing
