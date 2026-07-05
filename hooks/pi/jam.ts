@@ -11,8 +11,8 @@ export default function (pi: ExtensionAPI) {
     notify(pi, ctx, "start");
   });
 
-  pi.on("input", (event, ctx) => {
-    notify(pi, ctx, "working", summarizePrompt(event.text));
+  pi.on("before_agent_start", (event, ctx) => {
+    notify(pi, ctx, "working", summarizePrompt(event.prompt));
   });
 
   pi.on("agent_start", (_event, ctx) => {
@@ -28,7 +28,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_compact", (_event, ctx) => {
-    notify(pi, ctx, "done", "Compacted");
+    notify(pi, ctx, "working", "Compacted");
   });
 
   pi.on("session_shutdown", (_event, ctx) => {

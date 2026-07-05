@@ -46,13 +46,21 @@ Stop→done, StopFailure→error, SessionEnd→end. Every hook carries
 reads `session_id` and `cwd` from the hook's stdin JSON, so commands need no
 shell plumbing.
 
+Current pi mapping (in `hooks/pi/jam.ts`): session_start→start,
+before_agent_start/agent_start→working, agent_end→done,
+session_before_compact/session_compact→working (titled
+"Compacting"/"Compacted"), session_shutdown→end. Pi has no current
+waiting_input/error hook mapping in the shipped extension.
+
 ## Install semantics (do not weaken these)
 
 - **Non-destructive for anything jam doesn't own**: JSON targets are
   deep-merged on the `hooks` key only; unrelated keys and non-jam hook
   entries are preserved; malformed target files are refused, never
-  clobbered. Plain-file targets are never overwritten when existing content
-  differs (skip loudly instead).
+  clobbered. Plain-file targets should default to never overwriting differing
+  existing content unless the installer owns the entire target file. Pi is the
+  current exception: `hooks/pi/jam.ts` is a self-contained jam-owned extension,
+  so `jam setup pi` overwrites a differing installed copy to keep it synced.
 - **Jam-owned entries upgrade in place**: an entry whose hook commands are
   all `jam notify ...` invocations is jam-owned; stale ones (no longer in
   the embedded fragment, including under event keys the fragment dropped)

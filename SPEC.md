@@ -158,8 +158,10 @@ jam setup claude-code [--local] [--ask] [--dry]
 - Installs are **non-destructive and idempotent**: JSON targets (claude-code
   settings) are deep-merged on the `hooks` key only — existing entries and
   unrelated keys are preserved, re-runs are no-ops, and a malformed target
-  file is refused rather than clobbered. Plain-file targets (pi extensions)
-  are never overwritten when existing content differs.
+  file is refused rather than clobbered. Pi's self-contained extension file
+  is overwritten when it differs so it can stay synced with jam's embedded
+  payload; future plain-file installers should opt into overwrite behavior
+  only when jam owns the entire target file.
 - Installs immediately by default; `--ask` prints the payload and target
   path first and requires confirmation.
 - `--local` installs into the current directory's config
