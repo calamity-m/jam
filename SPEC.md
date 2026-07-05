@@ -148,25 +148,30 @@ events.
 
 jam setup pi
 jam setup claude-code [--local] [--ask] [--dry]
+jam setup codex [--local] [--ask] [--dry]
 
 ```
 
-- Supports `pi` and `claude-code` in the MVP.
+- Supports `pi`, `claude-code`, and `codex`.
 - Hook payloads are plain files in the repo's `hooks/<agent>/` directories,
   embedded into the binary at build time (build.rs copies them into
   `$OUT_DIR/assets`), so the installer is self-contained.
-- Installs are **non-destructive and idempotent**: JSON targets (claude-code
-  settings) are deep-merged on the `hooks` key only — existing entries and
-  unrelated keys are preserved, re-runs are no-ops, and a malformed target
-  file is refused rather than clobbered. Pi's self-contained extension file
-  is overwritten when it differs so it can stay synced with jam's embedded
-  payload; future plain-file installers should opt into overwrite behavior
-  only when jam owns the entire target file.
+- Installs are **non-destructive and idempotent**: JSON targets (Claude Code
+  settings and Codex hooks) use the same ownership-aware merge on the `hooks`
+  key — foreign entries and unrelated keys are preserved, stale jam-owned
+  entries are upgraded, re-runs are no-ops, and malformed files are refused
+  rather than clobbered. Pi's self-contained extension file is overwritten
+  when it differs so it can stay synced with jam's embedded payload; future
+  plain-file installers should opt into overwrite behavior only when jam owns
+  the entire target file.
 - Installs immediately by default; `--ask` prints the payload and target
   path first and requires confirmation.
-- `--local` installs into the current directory's config
-  (./.claude/settings.local.json) instead of the user root
-  (~/.claude/settings.json).
+- `--local` installs into the current directory's config instead of the user
+  root: `./.claude/settings.local.json` instead of `~/.claude/settings.json`,
+  or `./.codex/hooks.json` instead of `~/.codex/hooks.json`.
+- Codex maps `SessionStart`, `UserPromptSubmit`, `PreCompact`, `PostCompact`,
+  `PostToolUse`, `PermissionRequest`, and `Stop` onto the normalized subset it
+  can express. Codex users must review and trust installed hooks with `/hooks`.
 - Copy-paste mode is `jam setup <agent> --dry`: it prints the generated hooks instead
   of letting jam modify config.
 - Does not manage agents, repos, branches, worktrees, or multiplexer layout;

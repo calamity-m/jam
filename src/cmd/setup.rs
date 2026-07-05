@@ -23,18 +23,19 @@ pub struct SetupArgs {
     pub ask: bool,
 }
 
-/// MVP supports pi and claude-code; other agents follow the same recipe
-/// once their hooks/<agent>/ payloads exist.
+/// Agents with shipped hook payloads and installers.
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub enum SetupAgent {
     Pi,
     ClaudeCode,
+    Codex,
 }
 
 pub fn run(args: SetupArgs) -> ExitCode {
     let result = match args.agent {
         SetupAgent::Pi => crate::setup::pi::run(&args),
         SetupAgent::ClaudeCode => crate::setup::claude::run(&args),
+        SetupAgent::Codex => crate::setup::codex::run(&args),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

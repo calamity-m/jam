@@ -1,5 +1,6 @@
 pub mod claude;
 pub mod codex;
+mod json_hooks;
 pub mod opencode;
 pub mod pi;
 
