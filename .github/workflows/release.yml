@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+env:
+  CARGO_TERM_COLOR: always
+  BINARY_NAME: jam
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Test
+        run: cargo test
+      - name: Packaging guard (hook embed sources stay in the crate)
+        run: |
+          list="$(cargo package --list --allow-dirty)"
+          echo "$list" | grep -qx 'hooks/claude-code/settings-fragment.json' \
+            || { echo "::error::hooks/claude-code/settings-fragment.json missing from package (jam setup claude-code would lose its embedded payload)"; exit 1; }
+          echo "$list" | grep -qx 'hooks/codex/hooks-fragment.json' \
+            || { echo "::error::hooks/codex/hooks-fragment.json missing from package (jam setup codex would lose its embedded payload)"; exit 1; }
+          echo "$list" | grep -qx 'hooks/pi/jam.ts' \
+            || { echo "::error::hooks/pi/jam.ts missing from package (jam setup pi would lose its embedded payload)"; exit 1; }
+
+  release_notes:
+    needs: ci
+    runs-on: ubuntu-latest
+    outputs:
+      body: ${{ steps.git-cliff.outputs.content }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Generate release notes
+        id: git-cliff
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --current --strip header
+        env:
+          OUTPUT: CHANGES.md
+          GITHUB_REPO: ${{ github.repository }}
+
+  release:
+    needs: [ci, release_notes]
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - x86_64-unknown-linux-musl
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Install musl tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build release
+        run: cargo build --release --target ${{ matrix.target }}
+      - name: Package release artifact
+        run: |
+          mkdir -p dist
+          tar -czf "dist/${{ env.BINARY_NAME }}-${{ matrix.target }}.tar.gz" \
+            -C "target/${{ matrix.target }}/release" "${{ env.BINARY_NAME }}"
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BINARY_NAME }}-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish_release:
+    permissions:
+      contents: write
+    needs: [release, release_notes]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          body: ${{ needs.release_notes.outputs.body }}
