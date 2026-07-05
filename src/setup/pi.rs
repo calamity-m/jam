@@ -1,9 +1,9 @@
-//! Pi installer: generic plumbing that installs whatever files are shipped
-//! in hooks/pi/ verbatim into pi's extensions directory — global
+//! Pi installer: installs the self-contained files shipped in hooks/pi/
+//! verbatim into pi's extensions directory — global
 //! (~/.pi/agent/extensions/) or, with --local, project-local
-//! (./.pi/extensions/). The extension content itself (a *.ts file) is
-//! authored separately; hooks/pi is currently empty, so this reports that
-//! instead of writing anything.
+//! (./.pi/extensions/). Since these payloads are jam-owned extension files
+//! rather than user-edited settings, differing existing installs are
+//! overwritten so they stay in sync with the embedded payload.
 
 use crate::cmd::setup::SetupArgs;
 use crate::setup::assets;
@@ -56,8 +56,9 @@ fn target_dir(local: bool) -> Result<PathBuf, String> {
     }
 }
 
-/// Write each embedded file, never overwriting existing content that
-/// differs: identical files are no-ops, differing ones are skipped loudly.
+/// Write each embedded Pi extension file. Identical files are no-ops;
+/// differing files are overwritten because hooks/pi payloads are
+/// self-contained jam-owned extensions, not user-merged settings.
 fn install(target_dir: &std::path::Path) -> Result<(), String> {
     std::fs::create_dir_all(target_dir).map_err(|e| e.to_string())?;
     for (name, contents) in assets::PI {
@@ -67,10 +68,8 @@ fn install(target_dir: &std::path::Path) -> Result<(), String> {
                 println!("{} already installed", target.display());
             }
             Ok(_) => {
-                println!(
-                    "skipping {}: exists with different content; not overwriting",
-                    target.display()
-                );
+                std::fs::write(&target, contents).map_err(|e| e.to_string())?;
+                println!("updated {}", target.display());
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 std::fs::write(&target, contents).map_err(|e| e.to_string())?;
@@ -80,4 +79,62 @@ fn install(target_dir: &std::path::Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn pi_asset(name: &str) -> &'static str {
+        assets::PI
+            .iter()
+            .find(|(asset_name, _)| *asset_name == name)
+            .map(|(_, contents)| *contents)
+            .expect("pi asset is embedded")
+    }
+
+    fn temp_dir(test_name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "jam-pi-setup-{test_name}-{}-{unique}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn install_overwrites_differing_pi_extension() {
+        let dir = temp_dir("overwrite");
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("jam.ts");
+        std::fs::write(&target, "stale extension").unwrap();
+
+        install(&dir).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            pi_asset("jam.ts")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn install_is_idempotent_for_matching_pi_extension() {
+        let dir = temp_dir("idempotent");
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("jam.ts");
+        std::fs::write(&target, pi_asset("jam.ts")).unwrap();
+
+        install(&dir).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            pi_asset("jam.ts")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

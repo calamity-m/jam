@@ -11,8 +11,8 @@ export default function (pi: ExtensionAPI) {
     notify(pi, ctx, "start");
   });
 
-  pi.on("input", (event, ctx) => {
-    notify(pi, ctx, "working", summarizePrompt(event.text));
+  pi.on("before_agent_start", (event, ctx) => {
+    notify(pi, ctx, "working", { titleFromPrompt: event.prompt });
   });
 
   pi.on("agent_start", (_event, ctx) => {
@@ -24,11 +24,11 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_before_compact", (_event, ctx) => {
-    notify(pi, ctx, "working", "Compacting");
+    notify(pi, ctx, "working", { title: "Compacting" });
   });
 
   pi.on("session_compact", (_event, ctx) => {
-    notify(pi, ctx, "done", "Compacted");
+    notify(pi, ctx, "working", { title: "Compacted" });
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
@@ -36,7 +36,20 @@ export default function (pi: ExtensionAPI) {
   });
 }
 
-function notify(pi: ExtensionAPI, ctx: ExtensionContext, event: JamEvent, title?: string) {
+type NotifyDetails = {
+  title?: string;
+  titleFromPrompt?: string;
+};
+
+// Title fallback order:
+// - prompt-backed events let jam own summarization via --title-from-prompt
+// - otherwise use an explicit title, then Pi's session name, then cwd basename
+function notify(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  event: JamEvent,
+  details: NotifyDetails = {},
+) {
   const args = [
     "notify",
     "--agent",
@@ -49,19 +62,31 @@ function notify(pi: ExtensionAPI, ctx: ExtensionContext, event: JamEvent, title?
     ctx.cwd,
   ];
 
-  const sessionName = pi.getSessionName();
-  const label = title ?? sessionName ?? basename(ctx.cwd);
-  if (label) {
-    args.push("--title", label);
+  if (details.titleFromPrompt !== undefined) {
+    args.push("--title-from-prompt");
+  } else {
+    const sessionName = pi.getSessionName();
+    const label = details.title ?? sessionName ?? basename(ctx.cwd);
+    if (label) {
+      args.push("--title", label);
+    }
   }
 
   const child = spawn("jam", args, {
     detached: true,
-    stdio: "ignore",
+    // --title-from-prompt reads hook-style JSON from stdin; all other events
+    // ignore stdio so jam can never block Pi's event loop.
+    stdio: details.titleFromPrompt === undefined ? "ignore" : ["pipe", "ignore", "ignore"],
   });
   child.on("error", () => {
     // Hooks must never interrupt Pi if jam is unavailable.
   });
+  if (details.titleFromPrompt !== undefined) {
+    // Reuse jam notify's authoritative prompt summarizer instead of keeping a
+    // second implementation in this extension.
+    child.stdin?.on("error", () => {});
+    child.stdin?.end(JSON.stringify({ prompt: details.titleFromPrompt }));
+  }
   child.unref();
 }
 
@@ -71,12 +96,4 @@ function sessionId(ctx: ExtensionContext): string {
 
   fallbackSessionId ??= `pi:${ctx.cwd}:${process.pid}`;
   return fallbackSessionId;
-}
-
-// Mirrors summarize_prompt in src/notify.rs, the authoritative behavior:
-// collapse whitespace, 80-char cap (77 + "..."), undefined for blank input.
-function summarizePrompt(prompt: string): string | undefined {
-  const singleLine = prompt.replace(/\s+/g, " ").trim();
-  if (!singleLine) return undefined;
-  return singleLine.length > 80 ? `${singleLine.slice(0, 77)}...` : singleLine;
 }
