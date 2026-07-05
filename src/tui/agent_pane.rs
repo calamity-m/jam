@@ -41,7 +41,7 @@ fn row(session: &Session, selected: bool) -> ListItem<'static> {
         },
         Span::styled(
             format!(" {}", session.title.as_deref().unwrap_or("—")),
-            theme::MUTED,
+            muted_style(selected),
         ),
     ]);
     ListItem::new(line)
@@ -49,6 +49,16 @@ fn row(session: &Session, selected: bool) -> ListItem<'static> {
 
 /// Symbol + color per state; plain ASCII fallbacks keep rows legible in
 /// terminals without the unicode glyphs.
+fn muted_style(selected: bool) -> Style {
+    if selected {
+        // Dim default-colour text can disappear against the selected row's
+        // DarkGray background; use explicit gray like selected stale rows.
+        Style::default().fg(Color::Gray)
+    } else {
+        theme::MUTED
+    }
+}
+
 fn state_glyph(state: SessionState) -> (&'static str, Color) {
     match state {
         SessionState::WaitingInput => ("●", Color::Yellow),
@@ -87,5 +97,23 @@ fn shorten_home(cwd: &str) -> String {
             format!("~{}", &cwd[home.len()..])
         }
         _ => cwd.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::style::Modifier;
+
+    #[test]
+    fn selected_title_uses_visible_gray_without_dim() {
+        let style = muted_style(true);
+        assert_eq!(style.fg, Some(Color::Gray));
+        assert!(!style.add_modifier.contains(Modifier::DIM));
+    }
+
+    #[test]
+    fn unselected_title_stays_muted() {
+        assert_eq!(muted_style(false), theme::MUTED);
     }
 }
