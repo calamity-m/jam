@@ -177,6 +177,48 @@ jam setup codex [--local] [--ask] [--dry]
 - Does not manage agents, repos, branches, worktrees, or multiplexer layout;
   it only installs notification hooks.
 
+## Configuration
+
+jam reads one optional config file, `~/.config/jam/config.toml`
+(`$XDG_CONFIG_HOME/jam/config.toml` when `XDG_CONFIG_HOME` is set). It has a
+single `[tui]` table, and every key is off by default:
+
+```toml
+[tui]
+quit_on_focus = true       # quit the TUI after Enter successfully focuses a pane
+close_pane_on_quit = true  # close jam's own multiplexer pane on any TUI exit
+```
+
+The no-args TUI also accepts matching flags, `jam --quit-on-focus[=<bool>]`
+and `jam --close-pane-on-quit[=<bool>]` (bare flag means `=true`). Precedence
+is **flag > file > default-off**, so the file can be overridden in either
+direction from the command line (e.g. `jam --quit-on-focus=false`).
+
+- **`quit_on_focus`** — after Enter, the TUI exits only when the focus both
+  succeeds *and* actually lands the viewer on the target. Focus failures keep
+  it open with the error, and — because zellij has no cross-session
+  `switch-client` — a row in a *different* zellij session focuses but keeps
+  the TUI open with a status note rather than stranding the user with no jam
+  and no landing. tmux always lands (it moves the client).
+- **`close_pane_on_quit`** — on any exit (Enter-quit, `q`, `Esc`, `Ctrl-C`),
+  jam best-effort closes its *own* pane (`tmux kill-pane` /
+  `zellij action close-pane --pane-id`). This makes a spawned floating jam
+  (`zellij run -f -- jam`) leave nothing behind without a spawn-side
+  `zellij run -c` / `tmux display-popup -E`, which remain valid alternatives.
+  jam only ever closes its own pane, never the target's, and only when it can
+  see its multiplexer marker variable, so a stale inherited pane id can never
+  cause it to close someone else's pane. Inside a `tmux display-popup` no pane
+  id is exposed, so this is a safe no-op there (popups self-close anyway).
+
+Loading rules: a missing file uses defaults; unknown keys/tables are ignored
+(so an older binary tolerates a newer config); a malformed file or a
+wrong-typed value is a fatal error — jam prints `jam: config <path>: <error>`
+and exits without entering the TUI, so an edit typo surfaces immediately.
+
+Tested multiplexer versions: zellij 0.44.3, tmux 3.4. `close-pane --pane-id`
+support on zellij older than 0.44.3 is unverified; there, close-pane-on-quit
+degrades best-effort to a lingering pane rather than an error.
+
 ## User flows
 
 **Monitor.** Open a small pane anywhere, run `jam`. Leave it open. Glance at
@@ -184,7 +226,8 @@ it; the top row is always the most urgent agent.
 
 **Jump.** Press Enter on a row → jam focuses that agent's pane via the
 multiplexer backend (switching session/tab/window as needed) — even across
-tmux sessions. The TUI stays running in its pane.
+tmux sessions. The TUI stays running in its pane by default, or exits on a
+successful focus when `quit_on_focus` is set (see Configuration).
 
 **Dismiss.** Press `x` on a `done`/`error`/stale row to drop it from the list.
 

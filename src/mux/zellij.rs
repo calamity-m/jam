@@ -39,6 +39,27 @@ pub fn focus(mux_session: Option<&str>, pane_ref: &str) -> Result<(), FocusError
     }
 }
 
+/// Close a pane by id (verified on zellij 0.44.3; `--pane-id` support on
+/// older versions is unverified — best-effort). A pane that is already gone
+/// is the desired end state, so "not found" maps to `Ok`.
+pub fn close(mux_session: Option<&str>, pane_ref: &str) -> Result<(), FocusError> {
+    let pane_id = qualify_pane_id(pane_ref);
+    let mut args: Vec<&str> = Vec::new();
+    if let Some(session) = mux_session {
+        args.extend(["--session", session]);
+    }
+    args.extend(["action", "close-pane", "--pane-id", &pane_id]);
+    let (ok, stderr) = run("zellij", &args)?;
+    if ok || stderr.contains("not found") {
+        Ok(())
+    } else {
+        Err(FocusError::Failed(format!(
+            "zellij close-pane: {}",
+            stderr.trim()
+        )))
+    }
+}
+
 /// Normalize a pane id to the `terminal_<n>` form focus-pane-id expects
 /// ($ZELLIJ_PANE_ID is bare).
 fn qualify_pane_id(pane_ref: &str) -> String {
@@ -74,5 +95,16 @@ mod tests {
         let pane = std::env::var("ZELLIJ_PANE_ID").expect("run inside zellij");
         assert_eq!(focus(Some(&session), &pane), Ok(()));
         assert_eq!(focus(Some(&session), "999999"), Err(FocusError::PaneGone));
+    }
+
+    /// Live: confirm closing a missing pane is a no-op success. Never
+    /// touches jam's own pane or spawns one, so it cannot disturb the
+    /// user's layout. Run inside zellij with `cargo test -- --ignored`.
+    #[test]
+    #[ignore = "requires running inside a zellij session"]
+    fn live_close_missing_pane_is_noop() {
+        let session = std::env::var("ZELLIJ_SESSION_NAME").expect("run inside zellij");
+        // A pane id that cannot exist closes cleanly (already-gone == success).
+        assert_eq!(close(Some(&session), "999999"), Ok(()));
     }
 }

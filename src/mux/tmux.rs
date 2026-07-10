@@ -38,3 +38,17 @@ pub fn focus(pane_ref: &str) -> Result<(), FocusError> {
     }
     Ok(())
 }
+
+/// Close a pane by id. A pane that is already gone is the desired end state,
+/// so tmux's "can't find pane" (verified on tmux 3.4) maps to `Ok`.
+pub fn close(pane_ref: &str) -> Result<(), FocusError> {
+    let (ok, stderr) = run("tmux", &["kill-pane", "-t", pane_ref])?;
+    if ok || stderr.contains("can't find pane") {
+        Ok(())
+    } else {
+        Err(FocusError::Failed(format!(
+            "tmux kill-pane: {}",
+            stderr.trim()
+        )))
+    }
+}

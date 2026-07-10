@@ -2,8 +2,9 @@
 //! handle keys. Rendering details live in the sibling modules.
 
 use super::theme;
+use crate::config::Settings;
 use crate::mux::{self, FocusError};
-use crate::proto::{Request, Response, Session, SessionState};
+use crate::proto::{Mux, Request, Response, Session, SessionState};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::style::Style;
 use ratatui::widgets::{Block, BorderType};
@@ -19,7 +20,7 @@ pub struct App {
     pub message: Option<String>,
 }
 
-pub fn run() -> io::Result<()> {
+pub fn run(settings: &Settings) -> io::Result<()> {
     let stream = crate::daemon::connect_or_spawn()?;
     let mut writer = stream.try_clone()?;
     send(&mut writer, &Request::Subscribe)?;
@@ -40,8 +41,11 @@ pub fn run() -> io::Result<()> {
     });
 
     let mut terminal = ratatui::init();
-    let result = event_loop(&mut terminal, &rx, &mut writer);
-    ratatui::restore();
+    let result = event_loop(&mut terminal, &rx, &mut writer, settings);
+    ratatui::restore(); // ALWAYS before self-close: closing our pane may SIGHUP us.
+    if settings.close_pane_on_quit {
+        mux::close_own_pane(); // best-effort, and necessarily the last action.
+    }
     result
 }
 
@@ -49,6 +53,7 @@ fn event_loop(
     terminal: &mut DefaultTerminal,
     rx: &mpsc::Receiver<Vec<Session>>,
     writer: &mut UnixStream,
+    settings: &Settings,
 ) -> io::Result<()> {
     let mut app = App {
         sessions: Vec::new(),
@@ -81,7 +86,11 @@ fn event_loop(
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => return Ok(()),
             KeyCode::Up | KeyCode::Char('k') => app.select_prev(),
             KeyCode::Down | KeyCode::Char('j') => app.select_next(),
-            KeyCode::Enter => focus_selected(&mut app, writer)?,
+            KeyCode::Enter => {
+                if focus_selected(&mut app, writer)? && settings.quit_on_focus {
+                    return Ok(());
+                }
+            }
             KeyCode::Char('x') => {
                 if let Some(session) = app.sessions.get(app.selected) {
                     let session_id = session.session_id.clone();
@@ -106,16 +115,32 @@ fn draw(frame: &mut Frame, app: &App) {
 
 /// Jump to the selected agent's pane via its multiplexer backend. A missing
 /// pane is reported to the daemon as stale (SPEC: session→pane drift).
-fn focus_selected(app: &mut App, writer: &mut UnixStream) -> io::Result<()> {
+///
+/// Returns `true` only when the focus both succeeded *and* actually landed
+/// the user on the target (the landing rule) — the caller uses that to decide
+/// whether quit-on-focus should exit. Focus failures and cross-session zellij
+/// rows return `false` and leave a status message, keeping the TUI open.
+fn focus_selected(app: &mut App, writer: &mut UnixStream) -> io::Result<bool> {
     let Some(session) = app.sessions.get(app.selected) else {
-        return Ok(());
+        return Ok(false);
     };
     let (Some(mux), Some(pane_ref)) = (session.mux, session.pane_ref.as_deref()) else {
         app.message = Some("no pane recorded for this session".into());
-        return Ok(());
+        return Ok(false);
     };
-    match mux::focus(mux, session.mux_session.as_deref(), pane_ref) {
-        Ok(()) => app.message = None,
+    let row_session = session.mux_session.clone();
+    match mux::focus(mux, row_session.as_deref(), pane_ref) {
+        Ok(()) => {
+            let own_session = std::env::var("ZELLIJ_SESSION_NAME").ok();
+            if landed(mux, row_session.as_deref(), own_session.as_deref()) {
+                app.message = None;
+                return Ok(true);
+            }
+            // zellij cross-session: focus succeeded but the client can't move
+            // there, so quitting would strand the user. Stay open with a note.
+            let name = row_session.as_deref().unwrap_or("other");
+            app.message = Some(format!("focused in zellij session '{name}'"));
+        }
         Err(FocusError::PaneGone) => {
             let session_id = session.session_id.clone();
             app.message = Some("pane is gone; session marked stale".into());
@@ -123,7 +148,23 @@ fn focus_selected(app: &mut App, writer: &mut UnixStream) -> io::Result<()> {
         }
         Err(FocusError::Failed(msg)) => app.message = Some(msg),
     }
-    Ok(())
+    Ok(false)
+}
+
+/// Whether a successful focus actually lands the viewer's client on the
+/// target. tmux always lands (`switch-client` moves the client). zellij lands
+/// only within the caller's own session — it has no cross-session
+/// `switch-client`, so a row in a different session focuses but cannot pull
+/// the client over. `row_session == None` means the backend targeted the
+/// current session, which is by definition our own.
+fn landed(mux: Mux, row_session: Option<&str>, own_session: Option<&str>) -> bool {
+    match mux {
+        Mux::Tmux => true,
+        Mux::Zellij => match row_session {
+            None => true,
+            Some(row) => own_session == Some(row),
+        },
+    }
 }
 
 fn send(writer: &mut UnixStream, request: &Request) -> io::Result<()> {
@@ -238,6 +279,27 @@ mod tests {
             session("b", SessionState::WaitingInput, 4),
         ]);
         assert_eq!(app.sessions[app.selected].session_id, "b");
+    }
+
+    #[test]
+    fn tmux_always_lands() {
+        assert!(landed(Mux::Tmux, None, None));
+        assert!(landed(Mux::Tmux, Some("a"), Some("b")));
+    }
+
+    #[test]
+    fn zellij_lands_within_own_session() {
+        // None row session => backend targeted the current (our own) session.
+        assert!(landed(Mux::Zellij, None, Some("work")));
+        // Same named session lands.
+        assert!(landed(Mux::Zellij, Some("work"), Some("work")));
+    }
+
+    #[test]
+    fn zellij_does_not_land_cross_session() {
+        assert!(!landed(Mux::Zellij, Some("other"), Some("work")));
+        // Own session unknown (jam not in zellij): a named row can't land.
+        assert!(!landed(Mux::Zellij, Some("other"), None));
     }
 
     #[test]

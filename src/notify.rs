@@ -7,7 +7,7 @@
 //! `jam setup <agent> --dry`.
 
 use crate::cmd::notify::NotifyArgs;
-use crate::proto::{Event, Mux, Request};
+use crate::proto::{Event, Request};
 use serde::Deserialize;
 use std::io::{IsTerminal, Read, Write};
 
@@ -44,7 +44,7 @@ fn send(args: NotifyArgs) -> Result<(), String> {
             .then(|| stdin.prompt.as_deref().and_then(summarize_prompt))
             .flatten()
     });
-    let (mux, mux_session, env_pane) = detect_mux();
+    let (mux, mux_session, env_pane) = crate::mux::detect();
     let event = Event {
         session_id,
         agent: args.agent,
@@ -91,68 +91,9 @@ fn summarize_prompt(prompt: &str) -> Option<String> {
     Some(short)
 }
 
-/// Detect the surrounding multiplexer, its session, and the pane from the
-/// hook's environment. If sessions are nested, tmux wins arbitrarily;
-/// --pane-ref can override.
-fn detect_mux() -> (Option<Mux>, Option<String>, Option<String>) {
-    detect_mux_from(|name| std::env::var(name).ok())
-}
-
-/// Some hosts (Claude Code's session workers) strip the `TMUX`/`ZELLIJ`
-/// marker variables while the pane variables survive, so detection keys
-/// on either.
-fn detect_mux_from(
-    env: impl Fn(&str) -> Option<String>,
-) -> (Option<Mux>, Option<String>, Option<String>) {
-    let tmux_pane = env("TMUX_PANE");
-    if env("TMUX").is_some() || tmux_pane.is_some() {
-        // No session needed: tmux pane ids are unique across the server.
-        return (Some(Mux::Tmux), None, tmux_pane);
-    }
-    let zellij_pane = env("ZELLIJ_PANE_ID");
-    if env("ZELLIJ").is_some() || zellij_pane.is_some() {
-        return (Some(Mux::Zellij), env("ZELLIJ_SESSION_NAME"), zellij_pane);
-    }
-    (None, None, None)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn env_of<'a>(vars: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
-        move |name| {
-            vars.iter()
-                .find(|(k, _)| *k == name)
-                .map(|(_, v)| v.to_string())
-        }
-    }
-
-    #[test]
-    fn detect_mux_finds_zellij_without_marker_var() {
-        // Claude Code session workers strip ZELLIJ but keep the pane vars.
-        let env = env_of(&[("ZELLIJ_SESSION_NAME", "work"), ("ZELLIJ_PANE_ID", "19")]);
-        assert_eq!(
-            detect_mux_from(env),
-            (Some(Mux::Zellij), Some("work".into()), Some("19".into()))
-        );
-    }
-
-    #[test]
-    fn detect_mux_finds_tmux_without_marker_var() {
-        let env = env_of(&[("TMUX_PANE", "%5")]);
-        assert_eq!(
-            detect_mux_from(env),
-            (Some(Mux::Tmux), None, Some("%5".into()))
-        );
-    }
-
-    #[test]
-    fn detect_mux_prefers_tmux_and_none_when_bare() {
-        let both = env_of(&[("TMUX", "/tmp/t"), ("TMUX_PANE", "%5"), ("ZELLIJ", "0")]);
-        assert_eq!(detect_mux_from(both).0, Some(Mux::Tmux));
-        assert_eq!(detect_mux_from(env_of(&[])), (None, None, None));
-    }
 
     #[test]
     fn summarize_prompt_passes_short_prompts_through() {
