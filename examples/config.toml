@@ -1,0 +1,9 @@
+# Copy this file to ~/.config/jam/config.toml, or to
+# $XDG_CONFIG_HOME/jam/config.toml when XDG_CONFIG_HOME is set.
+
+[tui]
+# Exit jam after Enter successfully focuses the selected agent pane.
+quit_on_focus = true
+
+# Close jam's own multiplexer pane whenever the TUI exits.
+close_pane_on_quit = true
